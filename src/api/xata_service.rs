@@ -1,11 +1,11 @@
 use std::env;
 
 use dotenv::dotenv;
-use reqwest::{header, Client, Error};
+use reqwest::{header, Client, Error, RequestBuilder};
 
 use super::model::{Project, ProjectRequest, ProjectResponse};
 
-pub struct XataService {}
+pub struct XataService;
 
 impl XataService {
     fn env_loader(key: &str) -> String {
@@ -20,12 +20,7 @@ impl XataService {
         Client::new()
     }
 
-    pub async fn create_project(new_project: ProjectRequest) -> Result<ProjectResponse, Error> {
-        let url = format!(
-            "{}:main/tables/Project/data",
-            XataService::env_loader("XATA_DATABASE_URL")
-        );
-
+    fn create_headers() -> header::HeaderMap {
         let mut headers = header::HeaderMap::new();
         headers.insert("Content-Type", "application/json".parse().unwrap());
         headers.insert(
@@ -34,23 +29,34 @@ impl XataService {
                 .parse()
                 .unwrap(),
         );
+        headers
+    }
+
+    async fn send_request(builder: RequestBuilder) -> Result<reqwest::Response, reqwest::Error> {
+        builder.send().await
+    }
+
+    async fn handle_response<T>(response: reqwest::Response) -> Result<T, reqwest::Error>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let json = response.text().await?;
+        Ok(serde_json::from_str(json.as_str()).unwrap())
+    }
+
+    pub async fn create_project(new_project: ProjectRequest) -> Result<ProjectResponse, Error> {
+        let url = format!(
+            "{}:main/tables/Project/data",
+            XataService::env_loader("XATA_DATABASE_URL")
+        );
 
         let client = XataService::init()
             .post(url)
-            .headers(headers)
-            .json(&new_project)
-            .send()
-            .await;
+            .headers(XataService::create_headers())
+            .json(&new_project);
 
-        match client {
-            Ok(response) => {
-                let json = response.text().await?;
-                let created_project: ProjectResponse = serde_json::from_str(json.as_str()).unwrap();
-
-                Ok(created_project)
-            }
-            Err(error) => Err(error),
-        }
+        let response = XataService::send_request(client).await?;
+        XataService::handle_response(response).await
     }
 
     pub async fn get_project(project_id: String) -> Result<Project, Error> {
@@ -60,27 +66,12 @@ impl XataService {
             project_id
         );
 
-        let mut headers = header::HeaderMap::new();
-        headers.insert("Content-Type", "application/json".parse().unwrap());
-        headers.insert(
-            header::AUTHORIZATION,
-            format!("Bearer {}", XataService::env_loader("XATA_API_KEY"))
-                .parse()
-                .unwrap(),
-        );
+        let client = XataService::init()
+            .get(url)
+            .headers(XataService::create_headers());
 
-        let client = XataService::init().get(url).headers(headers).send().await;
-
-        match client {
-            Ok(response) => {
-                let json = response.text().await?;
-                println!("{}", json.as_str());
-                let project_details: Project = serde_json::from_str(json.as_str()).unwrap();
-
-                Ok(project_details)
-            }
-            Err(error) => Err(error),
-        }
+        let response = XataService::send_request(client).await?;
+        XataService::handle_response(response).await
     }
 
     pub async fn update_project(
@@ -93,32 +84,13 @@ impl XataService {
             project_id
         );
 
-        let mut headers = header::HeaderMap::new();
-        headers.insert("Content-Type", "application/json".parse().unwrap());
-        headers.insert(
-            header::AUTHORIZATION,
-            format!("Bearer {}", XataService::env_loader("XATA_API_KEY"))
-                .parse()
-                .unwrap(),
-        );
-
         let client = XataService::init()
             .put(url)
-            .headers(headers)
-            .json(&updated_project)
-            .send()
-            .await;
+            .headers(XataService::create_headers())
+            .json(&updated_project);
 
-        match client {
-            Ok(response) => {
-                let json = response.text().await?;
-                println!("{}", json.as_str());
-                let updates: ProjectResponse = serde_json::from_str(json.as_str()).unwrap();
-
-                Ok(updates)
-            }
-            Err(error) => Err(error),
-        }
+        let response = XataService::send_request(client).await?;
+        XataService::handle_response(response).await
     }
 
     pub async fn delete_project(project_id: String) -> Result<String, Error> {
@@ -128,27 +100,14 @@ impl XataService {
             project_id
         );
 
-        let mut headers = header::HeaderMap::new();
-        headers.insert("Content-Type", "application/json".parse().unwrap());
-        headers.insert(
-            header::AUTHORIZATION,
-            format!("Bearer {}", XataService::env_loader("XATA_API_KEY"))
-                .parse()
-                .unwrap(),
-        );
-
         let client = XataService::init()
             .delete(url)
-            .headers(headers)
-            .send()
-            .await;
+            .headers(XataService::create_headers());
 
-        match client {
-            Ok(_) => {
-                let json = format!("Project with ID: ${project_id} deleted successfully!!");
-                Ok(json)
-            }
-            Err(error) => Err(error),
-        }
+        let _response = XataService::send_request(client).await?;
+        Ok(format!(
+            "Project with ID: {} deleted successfully!!",
+            project_id
+        ))
     }
 }

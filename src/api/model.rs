@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Project {
-    pub id: Option<String>,
+    pub id: String,
     pub name: String,
     pub description: String,
     pub status: String,
